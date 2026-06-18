@@ -1,8 +1,9 @@
-import { SNAP } from '../../data/snapshot.js'
+import { SNAP as SNAP_FALLBACK } from '../../data/snapshot.js'
 import { Stat } from '../ui.jsx'
 import { Sparkline, LoadBars, StreamChart } from '../charts.jsx'
 
 export function Fitness({ ctx }) {
+  const SNAP = ctx.snap || SNAP_FALLBACK
   return (
     <div className="animate-rise">
       <div className="eyebrow">Synced from Garmin + Strava · {SNAP.syncedAt}</div>
