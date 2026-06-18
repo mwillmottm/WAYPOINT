@@ -22,7 +22,7 @@ export default function App() {
 
   const ctx = { ...wp, openModal }
 
-  const onSync = () => wp.setToast('Already on the latest sync · 18 Jun 5:00am')
+  const onSync = () => { wp.reload(); wp.setToast('Refreshing from Supabase…') }
 
   const PAGES = {
     today: <Today ctx={ctx} />,
@@ -40,7 +40,14 @@ export default function App() {
     <div className="min-h-screen flex">
       <Sidebar tab={wp.tab} setTab={wp.setTab} />
       <div className="flex-1 min-w-0 flex flex-col pb-20 lg:pb-0">
-        <TopBar tab={wp.tab} onSync={onSync} />
+        <TopBar tab={wp.tab} onSync={onSync} snap={wp.snap} />
+        {wp.status === 'offline' && (
+          <div className="px-5 sm:px-7 py-2 bg-ochre/[.12] border-b border-ochre/30 text-[12.5px] text-[#9c7a2e] flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-ochre" />
+            Showing bundled data — couldn’t reach Supabase. Edits are saved locally and will sync when the connection returns.
+            <button onClick={wp.reload} className="ml-auto font-semibold underline">Retry</button>
+          </div>
+        )}
         <main key={wp.tab} className="px-5 sm:px-7 py-6 max-w-[1180px] w-full mx-auto">
           {PAGES[wp.tab]}
         </main>
