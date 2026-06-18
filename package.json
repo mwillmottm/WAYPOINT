@@ -12,7 +12,7 @@
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "garmin-connect": "^1.7.0"
+    "garmin-connect": "^1.6.2"
   },
   "devDependencies": {
     "@netlify/functions": "^2.8.2",
