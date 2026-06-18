@@ -1,6 +1,4 @@
-// src/lib/api.js
-// Domain layer: maps Supabase tables into the shapes the dashboard uses,
-// and writes user actions back.
+// src/lib/api.js  (v2 — with auto-sync awareness and optimistic updates)
 
 import { sbGet, sbUpsert, sbPatch } from './supabase.js'
 
@@ -39,13 +37,16 @@ export async function getSnapshot() {
   const rows = await sbGet('fitness_snapshot', 'select=*&order=synced_at.desc&limit=1')
   const s = rows[0]
   if (!s) throw new Error('no snapshot')
-  const [athletes, preds, hrv, runs, stream] = await Promise.all([
+
+  const [athletes, preds, hrv, runs, stream, syncLog] = await Promise.all([
     sbGet('athlete', 'select=*&limit=1'),
     sbGet('race_predictions', `snapshot_id=eq.${s.id}&select=*`),
     sbGet('hrv_trend', 'select=*&order=day'),
-    sbGet('recent_runs', 'select=*&order=run_date.desc'),
+    sbGet('recent_runs', 'select=*&order=run_date.desc&limit=10'),
     sbGet('activity_streams', 'select=*&order=sample_idx'),
+    sbGet('daily_sync_log', 'select=*&order=sync_date.desc&limit=1').catch(() => []),
   ])
+
   const a = athletes[0] || {}
   const dist = stream.map((x) => +x.distance_km)
   const hrArr = stream.map((x) => x.hr)
@@ -54,10 +55,14 @@ export async function getSnapshot() {
   let climb = 0
   for (let i = 1; i < altArr.length; i++) climb += Math.max(0, altArr[i] - altArr[i - 1])
 
+  const lastSync = syncLog[0]
+  const syncedAt = new Date(s.synced_at).toLocaleString('en-AU', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit',
+  }).replace(',', ' ·')
+
   return {
-    syncedAt: new Date(s.synced_at).toLocaleString('en-AU', {
-      day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit',
-    }).replace(',', ' ·'),
+    syncedAt,
+    lastAutoSync: lastSync ? { date: lastSync.sync_date, status: lastSync.status, error: lastSync.error_msg } : null,
     athlete: { name: a.name, loc: a.location, weight: a.weight_kg },
     readiness: s.readiness, recoveryHrs: s.recovery_hrs, rhr: s.rhr, rhr7: s.rhr_7day,
     hrv: s.hrv, hrvStatus: s.hrv_status, sleep: s.sleep, battery: s.body_battery,
@@ -67,7 +72,7 @@ export async function getSnapshot() {
     chronicBand: [s.chronic_band_lo, s.chronic_band_hi], balance: s.balance,
     preds: Object.fromEntries(preds.map((p) => [p.distance, p.predicted_time])),
     hrvTrend: hrv.map((h) => h.hrv),
-    vo2Trend: [42, 43, 42, 42],
+    vo2Trend: [42, 42, 42, 42],
     recent: runs.map((r) => ({
       d: fmtDM(r.run_date), t: r.title, km: +r.distance_km,
       pace: r.pace, re: r.relative_effort, hr: r.avg_hr,
@@ -104,7 +109,6 @@ export async function getPlan() {
       .filter((s) => s.week_id === w.id)
       .sort((a, b) => a.session_date.localeCompare(b.session_date))
       .map((s) => {
-        // build the date → session_id map for every session
         dateToSession[s.session_date] = s.id
         const lg = logBy[s.id]
         if (lg) {
@@ -148,7 +152,6 @@ export function clearLogOverride(sessionId) {
   )
 }
 
-// save run feedback
 export function saveRunFeedback(sessionId, feedback) {
   return sbUpsert('session_log', { session_id: sessionId, notes: feedback }, 'session_id')
 }
