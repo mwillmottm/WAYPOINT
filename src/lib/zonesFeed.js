@@ -1,40 +1,36 @@
-// Client for the optional Garmin zones feed.
-//
-// Resolution order:
-//   1. VITE_ZONES_FEED_URL (set in your Netlify env)   — your own endpoint
-//   2. /.netlify/functions/garmin-zones                — bundled serverless stub
-//   3. /zones.json                                     — static snapshot in /public
-//
-// Returns { ok, pace, hr, meta } on success, or { ok:false, message } so the UI
-// can fall back to saved zones and explain what happened. Never throws.
+// Zones feed: now backed by Supabase. "Sync from Garmin" re-pulls pace_zones
+// from the database (where a Garmin worker would write the latest), falling back
+// to the optional Netlify function / static JSON, then to saved zones.
 
-const ENV_URL = import.meta.env?.VITE_ZONES_FEED_URL
-const CANDIDATES = [ENV_URL, '/.netlify/functions/garmin-zones', '/zones.json'].filter(Boolean)
+import { getZones } from './api.js'
 
 export async function syncZonesFromGarmin() {
-  for (const url of CANDIDATES) {
+  // 1) Supabase (the live source of truth)
+  try {
+    const z = await getZones()
+    return { ok: true, pace: z.pace, hr: z.hr, meta: { ...z.meta, source: z.meta.source || 'Garmin Connect' } }
+  } catch {
+    /* fall through */
+  }
+
+  // 2) optional static endpoints if Supabase is unreachable
+  const candidates = [import.meta.env?.VITE_ZONES_FEED_URL, '/.netlify/functions/garmin-zones', '/zones.json'].filter(Boolean)
+  for (const url of candidates) {
     try {
       const res = await fetch(url, { headers: { accept: 'application/json' } })
       if (!res.ok) continue
       const data = await res.json()
-      if (!Array.isArray(data.pace)) continue
-      return {
-        ok: true,
-        pace: data.pace,
-        hr: data.hr,
-        meta: {
-          source: data.meta?.source || 'Garmin Connect',
-          updated: data.meta?.updated || new Date().toISOString().slice(0, 10),
-          note: data.meta?.note,
-        },
+      if (Array.isArray(data.pace)) {
+        return { ok: true, pace: data.pace, hr: data.hr, meta: data.meta || { source: 'Garmin Connect' } }
       }
     } catch {
-      /* try next candidate */
+      /* try next */
     }
   }
+
   return {
     ok: false,
     message:
-      'No live feed responded, so your saved zones are unchanged. To make the sync button pull from Garmin automatically, deploy the included Netlify function (netlify/functions/garmin-zones.js) or point VITE_ZONES_FEED_URL at your own zones endpoint — the README has the steps. You can always edit zones by hand here in the meantime.',
+      'Could not reach the zones feed just now, so your saved zones are unchanged. The dashboard normally reads zones from Supabase; check your connection or the project URL/key. You can always edit zones by hand here.',
   }
 }
