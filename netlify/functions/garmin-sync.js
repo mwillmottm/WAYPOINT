@@ -145,6 +145,19 @@ export default async function handler() {
 
 console.log('Logging into Garmin')
 await gc.login()
+    console.log(
+  'GC OBJECT KEYS',
+  Object.keys(gc)
+)
+
+console.log(
+  'GC FULL OBJECT',
+  JSON.stringify(
+    Object.getOwnPropertyNames(gc),
+    null,
+    2
+  )
+)
     console.log('BASE URL TEST')
 
 try {
