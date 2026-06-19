@@ -102,7 +102,7 @@ async function logFailure(error) {
       sync_date: todayAEST(),
       synced_at: new Date().toISOString(),
       status: 'error',
-      error_message: error?.message || String(error)
+      error_msg: error.message || String(error)
     })
   } catch (e) {
     console.error('Failed to write sync log:', e)
