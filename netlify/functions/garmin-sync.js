@@ -145,46 +145,40 @@ export default async function handler() {
 
 console.log('Logging into Garmin')
 await gc.login()
-    console.log(
-  'GC OBJECT KEYS',
-  Object.keys(gc)
+
+console.log('Garmin login successful')
+
+console.log(
+  'CLIENT KEYS',
+  Object.keys(gc.client)
 )
 
 console.log(
-  'GC FULL OBJECT',
-  JSON.stringify(
-    Object.getOwnPropertyNames(gc),
-    null,
-    2
-  )
+  'CLIENT PROPS',
+  Object.getOwnPropertyNames(gc.client)
 )
-    console.log('BASE URL TEST')
+
+console.log(
+  'CLIENT DEFAULTS',
+  JSON.stringify(gc.client.defaults, null, 2)
+)
 
 try {
-  const result = await gc.get(
-    'https://connect.garmin.com/modern/proxy/userprofile-service/socialProfile'
+  const readiness = await gc.client.get(
+    'https://connect.garmin.com/wellness-service/wellness/dailySummaryChart'
   )
 
   console.log(
-    'GET TEST SUCCESS',
-    JSON.stringify(result, null, 2)
+    'READINESS SUCCESS',
+    JSON.stringify(readiness.data, null, 2)
   )
 } catch (e) {
-  console.log('GET TEST ERROR', e)
-}
-    try {
-  const readiness = await gc.get(
-    '/wellness-service/wellness/dailySummaryChart'
-  )
-
   console.log(
-    'READINESS DATA:',
-    JSON.stringify(readiness, null, 2)
+    'READINESS ERROR',
+    e.response?.status,
+    e.response?.data || e.message
   )
-} catch (e) {
-  console.log('READINESS ERROR:', e)
 }
-    console.log('Garmin login successful')
 
 console.log(
   'CLIENT BASE URL:',
