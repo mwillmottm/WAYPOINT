@@ -1,4 +1,5 @@
-// netlify/functions/garmin-sync.js
+// import pkg from 'garmin-connect'
+const { GarminConnect } = pkg
 //
 // Scheduled function: runs every morning at 5am AEST (7pm UTC previous day).
 // Pulls today's Garmin data and writes it to Supabase.
