@@ -148,6 +148,13 @@ await gc.login()
 
 console.log('Garmin login successful')
 
+    console.log(
+  'AVAILABLE METHODS',
+  Object.getOwnPropertyNames(
+    Object.getPrototypeOf(gc)
+  )
+)
+
 const today = new Date()
 const todayString = todayAEST()
 
