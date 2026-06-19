@@ -1,30 +1,30 @@
-// import pkg from 'garmin-connect'
+import pkg from 'garmin-connect'
+
 const { GarminConnect } = pkg
-//
-// Scheduled function: runs every morning at 5am AEST (7pm UTC previous day).
-// Pulls today's Garmin data and writes it to Supabase.
-//
-// SETUP (one time):
-//   1. npm install garmin-connect --save (in your project root)
-//   2. In Netlify → Site configuration → Environment variables, add:
-//        GARMIN_EMAIL      your Garmin Connect email
-//        GARMIN_PASSWORD   your Garmin Connect password
-//        SUPABASE_URL      https://pvmthpqjaqqnfpzwiade.supabase.co
-//        SUPABASE_SERVICE_KEY  your Supabase service_role key (NOT the anon key)
-//   3. Run waypoint_sync_tables.sql in Supabase SQL editor
-//   4. Push this file to GitHub — Netlify picks it up automatically
-//
-// NOTE: Use the SERVICE KEY here (not anon key) — this runs server-side only
-// and needs to bypass RLS to write data. The service key never goes to the browser.
 
-
+//
+// Scheduled Garmin sync
+// Runs 4 times daily Melbourne time:
+//
+// 4:30am AEST = 18:30 UTC previous day
+// 7:00am AEST = 21:00 UTC previous day
+// 12:00pm AEST = 02:00 UTC
+// 7:00pm AEST = 09:00 UTC
+//
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://pvmthpqjaqqnfpzwiade.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY
-const ATHLETE_ID   = '0a1d0000-0000-4000-8000-00000000a001'
+const ATHLETE_ID = '0a1d0000-0000-4000-8000-00000000a001'
 
-// Netlify scheduled function config — 7pm UTC = 5am AEST (UTC+10)
-export const config = { schedule: '0 19 * * *' }
+export const config = {
+schedule: [
+'30 18 * * *',
+'0 21 * * *',
+'0 2 * * *',
+'0 9 * * *',
+],
+}
+
 
 // ---- Supabase helpers ----
 const sbHeaders = {
@@ -53,7 +53,14 @@ async function sbInsert(table, row) {
 const pad = (n) => String(n).padStart(2, '0')
 const mpsToSecPerKm = (mps) => (mps > 0 ? Math.round(1000 / mps) : 0)
 const secToPace = (sec) => `${Math.floor(sec / 60)}:${pad(sec % 60)}`
-const todayISO = () => new Date().toISOString().slice(0, 10)
+const todayISO = () =>
+new Intl.DateTimeFormat('en-CA', {
+timeZone: 'Australia/Melbourne',
+year: 'numeric',
+month: '2-digit',
+day: '2-digit',
+}).format(new Date())
+
 const kmStr = (m) => (m / 1000).toFixed(2)
 
 // ---- main handler ----
