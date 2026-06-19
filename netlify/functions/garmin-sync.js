@@ -196,6 +196,18 @@ if (heartRateResult.status === 'rejected') {
     ? heartRateResult.value
     : null
 
+    const restingHeartRate =
+  heartRate?.restingHeartRate ??
+  profile?.userData?.restingHeartRate ??
+  null
+
+const averageHeartRate =
+  safeAverageHeartRate(heartRate)
+
+const rhr7day =
+  heartRate?.lastSevenDaysAvgRestingHeartRate ??
+  null
+
     console.log('=== HEART RATE DATA ===')
 console.log(JSON.stringify(heartRate, null, 2))
 
@@ -244,7 +256,7 @@ console.log(JSON.stringify(heartRate, null, 2))
       recovery_hrs: null,
 
       rhr: restingHeartRate,
-      rhr_7day: null,
+      rhr_7day: rhr7day,
 
       hrv: null,
       hrv_status: null,
