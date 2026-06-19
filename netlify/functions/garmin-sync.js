@@ -148,21 +148,6 @@ await gc.login()
 
 console.log('Garmin login successful')
 
-const testEndpoints = [
-  ...
-]
-
-for (const endpoint of testEndpoints) {
-  ...
-}
-
-console.log('CLIENT KEYS', ...)
-console.log('CLIENT PROPS', ...)
-console.log('CLIENT DEFAULTS', ...)
-console.log('CLIENT BASE URL:', ...)
-console.log('CLIENT CONFIG:', ...)
-
-// ADD THESE TWO BLOCKS HERE
 console.log(
   'GC METHODS',
   Object.getOwnPropertyNames(
@@ -172,11 +157,12 @@ console.log(
 
 console.log(
   'CLIENT METHODS',
-  Object.getOwnPropertyNames(
-    Object.getPrototypeOf(gc.client)
-  )
+  gc.client
+    ? Object.getOwnPropertyNames(
+        Object.getPrototypeOf(gc.client)
+      )
+    : 'NO CLIENT PROPERTY'
 )
-
 
 const today = new Date()
 const todayString = todayAEST()
