@@ -151,14 +151,6 @@ console.log(
     2
   )
 )
-})
-
-console.log(
-  'GARMIN METHODS:',
-  Object.getOwnPropertyNames(
-    Object.getPrototypeOf(gc)
-  )
-)
 
 console.log('Logging into Garmin')
 await gc.login()
