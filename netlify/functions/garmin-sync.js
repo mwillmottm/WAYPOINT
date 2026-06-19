@@ -145,6 +145,18 @@ export default async function handler() {
 
 console.log('Logging into Garmin')
 await gc.login()
+    try {
+  const readiness = await gc.get(
+    '/wellness-service/wellness/dailySummaryChart'
+  )
+
+  console.log(
+    'READINESS DATA:',
+    JSON.stringify(readiness, null, 2)
+  )
+} catch (e) {
+  console.log('READINESS ERROR:', e)
+}
     console.log('Garmin login successful')
 
     const today = new Date()
