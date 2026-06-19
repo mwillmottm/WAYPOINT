@@ -74,13 +74,13 @@ async function sbUpsert(table, rows, conflict) {
 
 async function logFailure(error) {
   try {
-    await sbInsert('daily_sync_log', {
-      athlete_id: ATHLETE_ID,
-      sync_date: todayAEST(),
-      synced_at: new Date().toISOString(),
-      status: 'error',
-      error_msg: error.message || String(error)
-    })
+   await sbInsert('daily_sync_log', {
+  sync_date: todayAEST(),
+  synced_at: new Date().toISOString(),
+  status: 'error',
+  error_msg: error.message || String(error),
+  activities_written: 0
+})
   } catch (e) {
     console.error('Failed to write sync log:', e)
   }
@@ -190,18 +190,39 @@ export default async function handler() {
       null
 
         console.log('Writing fitness snapshot')
-    await sbInsert('fitness_snapshot', {
-      athlete_id: ATHLETE_ID,
-      synced_at: new Date().toISOString(),
-      sleep_score: sleepScore,
-      resting_heart_rate: restingHeartRate,
-      average_heart_rate: avgHeartRate,
-      vo2_max: vo2Max,
-      sleep_duration_seconds:
-        sleepDuration?.sleepTimeSeconds ??
-        sleepDuration?.sleepDuration ??
-        null
-    })
+ await sbInsert('fitness_snapshot', {
+  athlete_id: ATHLETE_ID,
+  synced_at: new Date().toISOString(),
+
+  readiness: null,
+  recovery_hrs: null,
+
+  rhr: restingHeartRate,
+  rhr_7day: null,
+
+  hrv: null,
+  hrv_status: null,
+
+  sleep: sleepScore,
+
+  body_battery: null,
+  stress: null,
+  spo2: null,
+
+  vo2: vo2Max,
+
+  lt_hr: null,
+
+  training_status: null,
+  acute_load: null,
+  chronic_load: null,
+  acwr: null,
+
+  chronic_band_lo: null,
+  chronic_band_hi: null,
+
+  balance: null
+})
 
     const activityList = Array.isArray(activities)
       ? activities
@@ -268,17 +289,22 @@ export default async function handler() {
       }
 
       runRows.push({
-        athlete_id: ATHLETE_ID,
-        garmin_activity_id: activity.activityId,
-        run_date:
-          activity.startTimeLocal?.slice(0, 10) ||
-          today,
-        title:
-          activity.activityName || 'Run',
-        distance: distanceKm,
-        pace,
-        average_heart_rate: avgHr
-      })
+  athlete_id: ATHLETE_ID,
+  garmin_activity_id: activity.activityId,
+  run_date:
+    activity.startTimeLocal?.slice(0, 10) ||
+    today,
+  title:
+    activity.activityName || 'Run',
+
+  distance_km: distanceKm,
+
+  pace,
+
+  avg_hr: avgHr,
+
+  relative_effort: null
+})
     }
 
     if (runRows.length) {
