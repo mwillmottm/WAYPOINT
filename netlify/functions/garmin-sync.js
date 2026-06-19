@@ -145,6 +145,20 @@ export default async function handler() {
 
 console.log('Logging into Garmin')
 await gc.login()
+    console.log('BASE URL TEST')
+
+try {
+  const result = await gc.get(
+    'https://connect.garmin.com/modern/proxy/userprofile-service/socialProfile'
+  )
+
+  console.log(
+    'GET TEST SUCCESS',
+    JSON.stringify(result, null, 2)
+  )
+} catch (e) {
+  console.log('GET TEST ERROR', e)
+}
     try {
   const readiness = await gc.get(
     '/wellness-service/wellness/dailySummaryChart'
