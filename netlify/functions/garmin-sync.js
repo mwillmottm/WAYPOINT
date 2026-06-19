@@ -83,17 +83,16 @@ export default async function handler() {
     console.log('[garmin-sync] logged in to Garmin')
 
     // 2. Pull all data in parallel
-    const [
-      stats,
-      hrv,
-      trainingStatus,
-      activities,
-    ] = await Promise.allSettled([
-      gc.getStats(today),
-      gc.getHrvData(today),
-      gc.getTrainingStatus(today),
-      gc.getActivities(0, 15),
-    ])
+   console.log('GARMIN OBJECT:', Object.getOwnPropertyNames(Object.getPrototypeOf(gc)))
+
+return new Response(
+  JSON.stringify({
+    methods: Object.getOwnPropertyNames(Object.getPrototypeOf(gc))
+  }),
+  {
+    headers: { 'content-type': 'application/json' }
+  }
+)
 
     const s = stats.status === 'fulfilled' ? stats.value : {}
     const h = hrv.status === 'fulfilled' ? hrv.value : {}
