@@ -148,6 +148,36 @@ await gc.login()
 
 console.log('Garmin login successful')
 
+    const testEndpoints = [
+  '/wellness-service/wellness/dailySummary',
+  '/wellness-service/wellness/dailyStress',
+  '/wellness-service/wellness/bodyBattery',
+  '/biometric-service/biometric/bodybattery',
+  '/hrv-service/hrv',
+  '/trainingreadiness-service/trainingreadiness',
+  '/training-status-service/trainingstatus'
+]
+
+for (const endpoint of testEndpoints) {
+  try {
+    const result = await gc.get(endpoint)
+
+    console.log(
+      'ENDPOINT SUCCESS:',
+      endpoint
+    )
+
+    console.log(
+      JSON.stringify(result, null, 2)
+    )
+  } catch (e) {
+    console.log(
+      'ENDPOINT FAILED:',
+      endpoint
+    )
+  }
+}
+
 console.log(
   'CLIENT KEYS',
   Object.keys(gc.client)
@@ -163,22 +193,6 @@ console.log(
   JSON.stringify(gc.client.defaults, null, 2)
 )
 
-try {
-  const readiness = await gc.client.get(
-    'https://connect.garmin.com/wellness-service/wellness/dailySummaryChart'
-  )
-
-  console.log(
-    'READINESS SUCCESS',
-    JSON.stringify(readiness.data, null, 2)
-  )
-} catch (e) {
-  console.log(
-    'READINESS ERROR',
-    e.response?.status,
-    e.response?.data || e.message
-  )
-}
 
 console.log(
   'CLIENT BASE URL:',
