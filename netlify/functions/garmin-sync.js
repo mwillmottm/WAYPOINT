@@ -79,6 +79,7 @@ export default async function handler() {
     // 1. Connect to Garmin
     const gc = new GarminConnect({ username: process.env.GARMIN_EMAIL, password: process.env.GARMIN_PASSWORD })
     await gc.login()
+    console.log('GARMIN METHODS:', Object.getOwnPropertyNames(Object.getPrototypeOf(gc)))
     console.log('[garmin-sync] logged in to Garmin')
 
     // 2. Pull all data in parallel
