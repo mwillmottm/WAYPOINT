@@ -137,6 +137,11 @@ export default async function handler() {
     }
 
     const gc = new GarminConnect({
+      console.log(
+  Object.getOwnPropertyNames(
+    Object.getPrototypeOf(gc)
+  )
+)
       username: process.env.GARMIN_EMAIL,
       password: process.env.GARMIN_PASSWORD
     })
