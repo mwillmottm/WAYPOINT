@@ -148,6 +148,37 @@ await gc.login()
 
 console.log('Garmin login successful')
 
+    const todayString = todayAEST()
+
+const endpoints = [
+  `/wellness-service/wellness/dailySummary/${todayString}`,
+  `/wellness-service/wellness/bodyBattery/reports/${todayString}`,
+  `/hrv-service/hrv/${todayString}`,
+  `/trainingreadiness-service/trainingreadiness/${todayString}`,
+  `/training-status-service/trainingstatus/${todayString}`
+]
+
+for (const endpoint of endpoints) {
+  try {
+    const result = await gc.get(endpoint)
+
+    console.log(
+      'SUCCESS:',
+      endpoint
+    )
+
+    console.log(
+      JSON.stringify(result, null, 2)
+    )
+  } catch (e) {
+    console.log(
+      'FAILED:',
+      endpoint,
+      e?.message
+    )
+  }
+}
+
 console.log(
   'GC METHODS',
   Object.getOwnPropertyNames(
