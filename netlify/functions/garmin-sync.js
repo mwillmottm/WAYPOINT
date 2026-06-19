@@ -147,8 +147,10 @@ console.log('Logging into Garmin')
 await gc.login()
     console.log('Garmin login successful')
 
-    const today = todayAEST()
-    console.log('TODAY VALUE:', today)
+    const today = new Date()
+const todayString = todayAEST()
+
+console.log('TODAY VALUE:', todayString)
 
     const [
   profileResult,
@@ -289,8 +291,8 @@ if (heartRateResult.status === 'rejected') {
         athlete_id: ATHLETE_ID,
         garmin_activity_id: activity.activityId,
         run_date:
-          activity?.startTimeLocal?.slice(0, 10) ||
-          today,
+  activity?.startTimeLocal?.slice(0, 10) ||
+  todayString,
         title:
           activity?.activityName || 'Run',
         distance_km: distanceKm,
@@ -315,7 +317,7 @@ if (heartRateResult.status === 'rejected') {
     await sbUpsert(
       'daily_sync_log',
       [{
-        sync_date: today,
+        sync_date: todayString,
         synced_at: new Date().toISOString(),
         status: 'success',
         error_msg: null,
