@@ -83,16 +83,23 @@ export default async function handler() {
     console.log('[garmin-sync] logged in to Garmin')
 
     // 2. Pull all data in parallel
-   console.log('GARMIN OBJECT:', Object.getOwnPropertyNames(Object.getPrototypeOf(gc)))
+ const [
+activities,
+sleep,
+heartRate,
+profile,
+] = await Promise.allSettled([
+gc.getActivities(0, 15),
+gc.getSleepData(today),
+gc.getHeartRate(today),
+gc.getUserProfile(),
+])
 
-return new Response(
-  JSON.stringify({
-    methods: Object.getOwnPropertyNames(Object.getPrototypeOf(gc))
-  }),
-  {
-    headers: { 'content-type': 'application/json' }
-  }
-)
+const acts = activities.status === 'fulfilled' ? activities.value : []
+const sleepData = sleep.status === 'fulfilled' ? sleep.value : {}
+const hrData = heartRate.status === 'fulfilled' ? heartRate.value : {}
+const profileData = profile.status === 'fulfilled' ? profile.value : {}
+
 
     const s = stats.status === 'fulfilled' ? stats.value : {}
     const h = hrv.status === 'fulfilled' ? hrv.value : {}
@@ -101,19 +108,17 @@ return new Response(
 
     // 3. Write fitness snapshot
     const snapshot = {
-      athlete_id: ATHLETE_ID,
-      synced_at: new Date().toISOString(),
-      readiness: t.readiness_score ?? null,
-      recovery_hrs: t.recovery_time ? `${t.recovery_time} hr` : null,
-      rhr: s.restingHeartRate ?? null,
-      rhr_7day: s.lastSevenDaysAvgRestingHeartRate ?? null,
-      hrv: h.lastNight5MinHighHrvMs ?? h.lastNightAvgHrv ?? null,
-      hrv_status: h.status ?? null,
-      sleep: s.sleepScore ?? null,
-      body_battery: s.bodyBatteryHighestValue ?? null,
-      stress: s.averageStressLevel ?? null,
-      spo2: s.averageSpo2 ?? null,
-      vo2: t.vo2Max ?? null,
+      readiness: null,
+recovery_hrs: null,
+rhr: null,
+rhr_7day: null,
+hrv: null,
+hrv_status: null,
+sleep: sleepData?.dailySleepDTO?.sleepScore ?? null,
+body_battery: null,
+stress: null,
+spo2: null,
+vo2: profileData?.vo2Max ?? null,
       lt_hr: 173, // static — only changes after a LT test
       training_status: t.trainingStatusFeedback ?? null,
       acute_load: t.acuteLoad ?? null,
@@ -127,12 +132,7 @@ return new Response(
     console.log('[garmin-sync] snapshot written')
 
     // 4. Write today's HRV into trend
-    if (h.lastNightAvgHrv) {
-      await sbUpsert('hrv_trend',
-        [{ athlete_id: ATHLETE_ID, day: today, hrv: Math.round(h.lastNightAvgHrv) }],
-        'athlete_id,day')
-      console.log('[garmin-sync] HRV trend updated')
-    }
+   
 
     // 5. Write recent runs (upsert on garmin_activity_id to avoid dupes)
     const runs = (Array.isArray(acts) ? acts : acts?.activityList ?? [])
