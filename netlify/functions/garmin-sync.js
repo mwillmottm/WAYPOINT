@@ -17,7 +17,7 @@ const { GarminConnect } = pkg
 // NOTE: Use the SERVICE KEY here (not anon key) — this runs server-side only
 // and needs to bypass RLS to write data. The service key never goes to the browser.
 
-import { GarminConnect } from 'garmin-connect'
+
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://pvmthpqjaqqnfpzwiade.supabase.co'
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY
