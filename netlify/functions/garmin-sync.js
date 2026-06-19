@@ -192,29 +192,11 @@ if (heartRateResult.status === 'rejected') {
         : null
 
     const heartRate =
-      heartRateResult.status === 'fulfilled'
-        ? heartRateResult.value
-        : null
-
-    const activities =
-      activitiesResult.status === 'fulfilled'
-        ? activitiesResult.value
-        : []
-
-    const restingHeartRate =
-      heartRate?.restingHeartRate ??
-      profile?.userData?.restingHeartRate ??
-      null
-
-    const averageHeartRate =
-      safeAverageHeartRate(heartRate)
-
-    const heartRate =
   heartRateResult.status === 'fulfilled'
     ? heartRateResult.value
     : null
 
-console.log('=== HEART RATE DATA ===')
+    console.log('=== HEART RATE DATA ===')
 console.log(JSON.stringify(heartRate, null, 2))
 
 console.log(
