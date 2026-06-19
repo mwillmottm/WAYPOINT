@@ -209,10 +209,36 @@ if (heartRateResult.status === 'rejected') {
     const averageHeartRate =
       safeAverageHeartRate(heartRate)
 
+    const heartRate =
+  heartRateResult.status === 'fulfilled'
+    ? heartRateResult.value
+    : null
+
+console.log('=== HEART RATE DATA ===')
+console.log(JSON.stringify(heartRate, null, 2))
+
+console.log(
+  'RHR:',
+  heartRate?.restingHeartRate
+)
+
+const activities =
+  activitiesResult.status === 'fulfilled'
+    ? activitiesResult.value
+    : []
+
     const sleepScore =
-      sleepData?.sleepScore ??
-      sleepData?.dailySleepDTO?.sleepScore ??
-      null
+  sleepData?.dailySleepDTO?.sleepScores?.overall?.value ??
+  sleepData?.sleepScore ??
+  null
+
+const stress =
+  sleepData?.dailySleepDTO?.avgSleepStress ??
+  null
+
+const spo2 =
+  sleepData?.dailySleepDTO?.averageSpO2Value ??
+  null
 
     const vo2Max =
       profile?.userData?.vo2MaxRunning ??
@@ -244,8 +270,8 @@ console.log(JSON.stringify(heartRate, null, 2))
       sleep: sleepScore,
 
       body_battery: null,
-      stress: null,
-      spo2: null,
+      stress,
+spo2,
 
       vo2: vo2Max,
 
