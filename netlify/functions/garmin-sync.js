@@ -141,16 +141,7 @@ export default async function handler() {
   password: process.env.GARMIN_PASSWORD
 })
 
-console.log('GARMIN METHODS')
-console.log(
-  JSON.stringify(
-    Object.getOwnPropertyNames(
-      Object.getPrototypeOf(gc)
-    ),
-    null,
-    2
-  )
-)
+
 
 console.log('Logging into Garmin')
 await gc.login()
@@ -160,13 +151,20 @@ await gc.login()
     console.log('TODAY VALUE:', today)
 
     const [
-      profileResult,
-      activitiesResult,
-      sleepDataResult,
-      sleepDurationResult,
-      heartRateResult
-    ] = await Promise.allSettled([
-      console.log('sleep status:', sleepDataResult.status)
+  profileResult,
+  activitiesResult,
+  sleepDataResult,
+  sleepDurationResult,
+  heartRateResult
+] = await Promise.allSettled([
+  gc.getUserProfile(),
+  gc.getActivities(0, 20),
+  gc.getSleepData(today),
+  gc.getSleepDuration(today),
+  gc.getHeartRate(today)
+])
+
+console.log('sleep status:', sleepDataResult.status)
 console.log('heart status:', heartRateResult.status)
 
 if (sleepDataResult.status === 'rejected') {
@@ -176,13 +174,6 @@ if (sleepDataResult.status === 'rejected') {
 if (heartRateResult.status === 'rejected') {
   console.log('heart error:', heartRateResult.reason)
 }
-      gc.getUserProfile(),
-      gc.getActivities(0, 20),
-      gc.getSleepData(today),
-      gc.getSleepDuration(today),
-      gc.getHeartRate(today)
-    ])
-
     const profile =
       profileResult.status === 'fulfilled'
         ? profileResult.value
@@ -226,14 +217,7 @@ if (heartRateResult.status === 'rejected') {
       profile?.vo2MaxRunning ??
       null
 
-    console.log('=== PROFILE ===')
-console.log(JSON.stringify(profile, null, 2))
-
-console.log('=== SLEEP DATA ===')
-console.log(JSON.stringify(sleepData, null, 2))
-
-console.log('=== HEART RATE ===')
-console.log(JSON.stringify(heartRate, null, 2))
+  
 
     console.log('Writing fitness snapshot')
 
