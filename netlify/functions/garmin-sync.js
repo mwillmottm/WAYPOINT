@@ -148,65 +148,35 @@ await gc.login()
 
 console.log('Garmin login successful')
 
-    const testEndpoints = [
-  '/wellness-service/wellness/dailySummary',
-  '/wellness-service/wellness/dailyStress',
-  '/wellness-service/wellness/bodyBattery',
-  '/biometric-service/biometric/bodybattery',
-  '/hrv-service/hrv',
-  '/trainingreadiness-service/trainingreadiness',
-  '/training-status-service/trainingstatus'
+const testEndpoints = [
+  ...
 ]
 
 for (const endpoint of testEndpoints) {
-  try {
-    const result = await gc.get(endpoint)
-
-    console.log(
-      'ENDPOINT SUCCESS:',
-      endpoint
-    )
-
-    console.log(
-      JSON.stringify(result, null, 2)
-    )
-  } catch (e) {
-    console.log(
-      'ENDPOINT FAILED:',
-      endpoint
-    )
-  }
+  ...
 }
 
-console.log(
-  'CLIENT KEYS',
-  Object.keys(gc.client)
-)
+console.log('CLIENT KEYS', ...)
+console.log('CLIENT PROPS', ...)
+console.log('CLIENT DEFAULTS', ...)
+console.log('CLIENT BASE URL:', ...)
+console.log('CLIENT CONFIG:', ...)
 
+// ADD THESE TWO BLOCKS HERE
 console.log(
-  'CLIENT PROPS',
-  Object.getOwnPropertyNames(gc.client)
-)
-
-console.log(
-  'CLIENT DEFAULTS',
-  JSON.stringify(gc.client.defaults, null, 2)
-)
-
-
-console.log(
-  'CLIENT BASE URL:',
-  gc._api?.defaults?.baseURL
-)
-
-console.log(
-  'CLIENT CONFIG:',
-  JSON.stringify(
-    gc._api?.defaults,
-    null,
-    2
+  'GC METHODS',
+  Object.getOwnPropertyNames(
+    Object.getPrototypeOf(gc)
   )
 )
+
+console.log(
+  'CLIENT METHODS',
+  Object.getOwnPropertyNames(
+    Object.getPrototypeOf(gc.client)
+  )
+)
+
 
 const today = new Date()
 const todayString = todayAEST()
