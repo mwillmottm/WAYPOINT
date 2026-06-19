@@ -141,6 +141,18 @@ export default async function handler() {
   password: process.env.GARMIN_PASSWORD
 })
 
+console.log('GARMIN METHODS')
+console.log(
+  JSON.stringify(
+    Object.getOwnPropertyNames(
+      Object.getPrototypeOf(gc)
+    ),
+    null,
+    2
+  )
+)
+})
+
 console.log(
   'GARMIN METHODS:',
   Object.getOwnPropertyNames(
