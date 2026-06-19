@@ -157,6 +157,7 @@ await gc.login()
     console.log('Garmin login successful')
 
     const today = todayAEST()
+    console.log('TODAY VALUE:', today)
 
     const [
       profileResult,
@@ -165,6 +166,16 @@ await gc.login()
       sleepDurationResult,
       heartRateResult
     ] = await Promise.allSettled([
+      console.log('sleep status:', sleepDataResult.status)
+console.log('heart status:', heartRateResult.status)
+
+if (sleepDataResult.status === 'rejected') {
+  console.log('sleep error:', sleepDataResult.reason)
+}
+
+if (heartRateResult.status === 'rejected') {
+  console.log('heart error:', heartRateResult.reason)
+}
       gc.getUserProfile(),
       gc.getActivities(0, 20),
       gc.getSleepData(today),
