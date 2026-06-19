@@ -204,6 +204,15 @@ export default async function handler() {
       profile?.vo2MaxRunning ??
       null
 
+    console.log('=== PROFILE ===')
+console.log(JSON.stringify(profile, null, 2))
+
+console.log('=== SLEEP DATA ===')
+console.log(JSON.stringify(sleepData, null, 2))
+
+console.log('=== HEART RATE ===')
+console.log(JSON.stringify(heartRate, null, 2))
+
     console.log('Writing fitness snapshot')
 
     await sbInsert('fitness_snapshot', {
