@@ -148,15 +148,25 @@ await gc.login()
 
 console.log('Garmin login successful')
 
-    console.log(
-  'AVAILABLE METHODS',
-  Object.getOwnPropertyNames(
-    Object.getPrototypeOf(gc)
-  )
-)
-
 const today = new Date()
 const todayString = todayAEST()
+
+try {
+  const test = await gc.get(
+    '/wellness-service/wellness/dailySummary/' + todayString
+  )
+
+  console.log(
+    'DAILY SUMMARY RESPONSE',
+    JSON.stringify(test, null, 2)
+  )
+} catch (e) {
+  console.log(
+    'DAILY SUMMARY FULL ERROR',
+    e.message,
+    e.stack
+  )
+}
 
 console.log('TODAY VALUE:', todayString)
 
