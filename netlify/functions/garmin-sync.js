@@ -137,17 +137,19 @@ export default async function handler() {
     }
 
     const gc = new GarminConnect({
-      console.log(
+  username: process.env.GARMIN_EMAIL,
+  password: process.env.GARMIN_PASSWORD
+})
+
+console.log(
+  'GARMIN METHODS:',
   Object.getOwnPropertyNames(
     Object.getPrototypeOf(gc)
   )
 )
-      username: process.env.GARMIN_EMAIL,
-      password: process.env.GARMIN_PASSWORD
-    })
 
-    console.log('Logging into Garmin')
-    await gc.login()
+console.log('Logging into Garmin')
+await gc.login()
     console.log('Garmin login successful')
 
     const today = todayAEST()
