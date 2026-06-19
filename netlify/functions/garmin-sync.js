@@ -32,30 +32,7 @@ function todayAEST() {
   return date
 }
 
-function currentAESTTime() {
-  const parts = new Intl.DateTimeFormat('en-AU', {
-    timeZone: 'Australia/Brisbane',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  }).formatToParts(new Date())
 
-  const hour = parts.find(p => p.type === 'hour')?.value
-  const minute = parts.find(p => p.type === 'minute')?.value
-
-  return `${hour}:${minute}`
-}
-
-function shouldRunSync() {
-  const allowed = new Set([
-    '04:30',
-    '07:00',
-    '12:00',
-    '19:00'
-  ])
-
-  return allowed.has(currentAESTTime())
-}
 
 async function sbInsert(table, row) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
@@ -132,6 +109,7 @@ function safeAverageHeartRate(hrData) {
 
 export default async function handler() {
   try {
+        console.log('Garmin sync started')
     if (
       !SUPABASE_URL ||
       !SUPABASE_SERVICE_KEY ||
@@ -142,23 +120,15 @@ export default async function handler() {
       )
     }
 
-    if (!shouldRunSync()) {
-      return new Response(
-        JSON.stringify({ ok: true }),
-        {
-          headers: {
-            'content-type': 'application/json'
-          }
-        }
-      )
-    }
+ 
 
     const gc = new GarminConnect({
       username: process.env.GARMIN_EMAIL,
       password: process.env.GARMIN_PASSWORD
     })
-
+    console.log('Logging into Garmin')
     await gc.login()
+        console.log('Garmin login successful')
 
     const today = todayAEST()
 
@@ -219,6 +189,7 @@ export default async function handler() {
       profile?.vo2MaxRunning ??
       null
 
+        console.log('Writing fitness snapshot')
     await sbInsert('fitness_snapshot', {
       athlete_id: ATHLETE_ID,
       synced_at: new Date().toISOString(),
@@ -318,6 +289,7 @@ export default async function handler() {
       )
     }
 
+        console.log('Writing success log')
     await sbInsert('daily_sync_log', {
       athlete_id: ATHLETE_ID,
       sync_date: today,
