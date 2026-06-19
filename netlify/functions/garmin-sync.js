@@ -219,6 +219,11 @@ if (heartRateResult.status === 'rejected') {
       profile?.vo2MaxRunning ??
       null
 
+    console.log('SLEEP DATA')
+console.log(JSON.stringify(sleepData, null, 2))
+
+console.log('HEART RATE DATA')
+console.log(JSON.stringify(heartRate, null, 2))
   
 
     console.log('Writing fitness snapshot')
