@@ -173,7 +173,21 @@ try {
 }
     console.log('Garmin login successful')
 
-    const today = new Date()
+console.log(
+  'CLIENT BASE URL:',
+  gc._api?.defaults?.baseURL
+)
+
+console.log(
+  'CLIENT CONFIG:',
+  JSON.stringify(
+    gc._api?.defaults,
+    null,
+    2
+  )
+)
+
+const today = new Date()
 const todayString = todayAEST()
 
 console.log('TODAY VALUE:', todayString)
