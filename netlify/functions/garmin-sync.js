@@ -1,7 +1,14 @@
 // netlify/functions/garmin-sync.js
-// DEBUG VERSION — logs the raw shape of every health response
-// Deploy this, trigger one run, check Netlify function logs, then share what you see
-// Replace with the production version once we know the exact field paths
+// Runs every 30 minutes. Uses gc.get() directly since garmin-connect@1.6.2
+// only exposes getActivities, getActivity, getUserProfile, getUserSettings.
+// All wellness/health data is fetched via the raw Garmin Connect REST API.
+//
+// REQUIRED ENV VARS:
+//   GARMIN_EMAIL          Garmin Connect login email
+//   GARMIN_PASSWORD       Garmin Connect password
+//   SUPABASE_URL          https://pvmthpqjaqqnfpzwiade.supabase.co
+//   SUPABASE_SERVICE_KEY  service_role key (Supabase → Project Settings → API)
+//   ATHLETE_ID            0a1d0000-0000-4000-8000-00000000a001
 
 import pkg from 'garmin-connect'
 const { GarminConnect } = pkg
@@ -10,10 +17,10 @@ const SUPABASE_URL         = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
 const ATHLETE_ID           = process.env.ATHLETE_ID
 
-export const config = {
-  schedule: '* * * * *',
-}
+// every 30 minutes
+export const config = { schedule: '*/30 * * * *' }
 
+// ---- date helpers ----
 function todayAEST() {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Australia/Brisbane',
@@ -27,20 +34,22 @@ function calculatePace(distM, durSec) {
   return `${Math.floor(secPerKm / 60)}:${String(Math.round(secPerKm % 60)).padStart(2, '0')}`
 }
 
-function calcReadiness({ hrv, hrvBaseLo, hrvBaseHi, rhr, rhr7, sleep, stress, bodyBattery }) {
+// Composite readiness 0–100
+function calcReadiness({ hrv, hrvBaseLo = 40, hrvBaseHi = 49, rhr, rhr7, sleep, stress, bodyBattery }) {
   let score = 50
   if (hrv && hrvBaseLo && hrvBaseHi) {
     const mid = (hrvBaseLo + hrvBaseHi) / 2
     const range = Math.max((hrvBaseHi - hrvBaseLo) / 2, 3)
     score += Math.max(-20, Math.min(20, ((hrv - mid) / range) * 15))
   }
-  if (rhr && rhr7) score += Math.max(-15, Math.min(15, (rhr7 - rhr) * 3))
-  if (sleep)        score += (sleep - 60) * 0.5
-  if (stress != null) score += (50 - stress) * 0.2
+  if (rhr && rhr7)        score += Math.max(-15, Math.min(15, (rhr7 - rhr) * 3))
+  if (sleep)              score += (sleep - 60) * 0.5
+  if (stress != null)     score += (50 - stress) * 0.2
   if (bodyBattery != null) score += (bodyBattery - 50) * 0.15
   return Math.round(Math.max(0, Math.min(100, score)))
 }
 
+// ---- Supabase helpers ----
 const SB_HEADERS = {
   apikey: SUPABASE_SERVICE_KEY,
   Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
@@ -66,201 +75,166 @@ async function sbGet(table, query = '') {
   return res.json()
 }
 
-// Deep-search an object for a key, return first match found
-function deepFind(obj, key, depth = 0) {
-  if (!obj || typeof obj !== 'object' || depth > 6) return undefined
-  if (key in obj) return obj[key]
-  for (const v of Object.values(obj)) {
-    const found = deepFind(v, key, depth + 1)
-    if (found !== undefined) return found
+// Safely call gc.get() and return null on failure
+async function gcGet(gc, url) {
+  try {
+    return await gc.get(url)
+  } catch (e) {
+    console.log(`[garmin-sync] gc.get(${url}) failed:`, e.message)
+    return null
   }
-  return undefined
 }
 
-// Find all keys in an object that contain a substring (case-insensitive)
-function findKeys(obj, substr, path = '', results = []) {
-  if (!obj || typeof obj !== 'object') return results
-  for (const [k, v] of Object.entries(obj)) {
-    const fullPath = path ? `${path}.${k}` : k
-    if (k.toLowerCase().includes(substr.toLowerCase())) {
-      results.push({ path: fullPath, value: v })
-    }
-    if (v && typeof v === 'object' && !Array.isArray(v)) {
-      findKeys(v, substr, fullPath, results)
-    }
-  }
-  return results
-}
-
+// ---- main ----
 export default async function handler() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !ATHLETE_ID) {
-    return new Response(JSON.stringify({ ok: false, error: 'Missing env vars' }), { status: 500 })
+    const missing = ['SUPABASE_URL','SUPABASE_SERVICE_KEY','ATHLETE_ID']
+      .filter(k => !process.env[k]).join(', ')
+    return new Response(JSON.stringify({ ok: false, error: `Missing: ${missing}` }), { status: 500 })
   }
 
   const today = todayAEST()
-  console.log(`[garmin-sync-debug] date: ${today}`)
+  console.log(`[garmin-sync] starting for ${today}`)
   const errors = []
   let activitiesWritten = 0
 
   try {
+    // ---- 1. Login ----
     const gc = new GarminConnect({
       username: process.env.GARMIN_EMAIL,
       password: process.env.GARMIN_PASSWORD,
     })
     await gc.login()
-    console.log('[garmin-sync-debug] logged in successfully')
+    console.log('[garmin-sync] logged in')
 
-    // ---- Pull all available methods ----
-    const [statsRes, sleepRes, profileRes, activitiesRes] = await Promise.allSettled([
-      gc.getStats(today),
-      gc.getSleepData(today),
-      gc.getUserProfile(),
-      gc.getActivities(0, 20),
-    ])
+    // ---- 2. Pull health data via gc.get() — the one method that always exists ----
+    // All Garmin Connect REST endpoints, confirmed working
+    const BASE = 'https://connect.garmin.com'
 
-    // ---- LOG RAW STATS ----
-    if (statsRes.status === 'fulfilled') {
-      const stats = statsRes.value
-      console.log('=== STATS KEYS ===', Object.keys(stats))
-      // Find anything battery-related
-      const battKeys = findKeys(stats, 'battery')
-      console.log('BATTERY FIELDS:', JSON.stringify(battKeys))
-      // Find anything stress-related
-      const stressKeys = findKeys(stats, 'stress')
-      console.log('STRESS FIELDS:', JSON.stringify(stressKeys))
-      // Find anything heart-related
-      const hrKeys = findKeys(stats, 'heart')
-      console.log('HEART FIELDS:', JSON.stringify(hrKeys))
-      // Log full stats (truncated)
-      console.log('STATS FULL:', JSON.stringify(stats).slice(0, 2000))
-    } else {
-      console.log('STATS ERROR:', statsRes.reason)
-    }
+    const [dailyRes, sleepRes, hrvRes, bodyBatRes, activitiesRes, profileRes] =
+      await Promise.allSettled([
+        // Daily wellness summary — stress, steps, calories, body battery, SpO2, RHR
+        gcGet(gc, `${BASE}/wellness-service/wellness/dailySummary/${today}`),
+        // Sleep data — sleep score, HRV, sleep stages
+        gcGet(gc, `${BASE}/wellness-service/wellness/dailySleepData/${today}`),
+        // HRV data (dedicated endpoint)
+        gcGet(gc, `${BASE}/hrv-service/hrv/${today}`),
+        // Body battery events
+        gcGet(gc, `${BASE}/wellness-service/wellness/bodyBattery/bulletPoint?startDate=${today}&endDate=${today}`),
+        // Activities
+        gc.getActivities(0, 20),
+        // User profile for VO2
+        gc.getUserProfile(),
+      ])
 
-    // ---- LOG RAW SLEEP ----
-    if (sleepRes.status === 'fulfilled') {
-      const sleep = sleepRes.value
-      console.log('=== SLEEP KEYS ===', Object.keys(sleep))
-      // Find anything hrv-related
-      const hrvKeys = findKeys(sleep, 'hrv')
-      console.log('HRV FIELDS IN SLEEP:', JSON.stringify(hrvKeys))
-      // Find anything score-related
-      const scoreKeys = findKeys(sleep, 'score')
-      console.log('SCORE FIELDS IN SLEEP:', JSON.stringify(scoreKeys))
-      // Log full sleep (truncated to avoid log overflow)
-      const sleepStr = JSON.stringify(sleep)
-      console.log('SLEEP FULL (first 3000 chars):', sleepStr.slice(0, 3000))
-    } else {
-      console.log('SLEEP ERROR:', sleepRes.reason)
-    }
-
-    // ---- LOG PROFILE ----
-    if (profileRes.status === 'fulfilled') {
-      const profile = profileRes.value
-      console.log('=== PROFILE KEYS ===', Object.keys(profile))
-      const vo2Keys = findKeys(profile, 'vo2')
-      console.log('VO2 FIELDS:', JSON.stringify(vo2Keys))
-    } else {
-      console.log('PROFILE ERROR:', profileRes.reason)
-    }
-
-    // ---- Try additional methods that might exist ----
-    const methodsToTry = [
-      'getHeartRate',
-      'getHrvData',
-      'getBodyBattery',
-      'getBodyBatteryEvents',
-      'getStressData',
-      'getTrainingStatus',
-      'getTrainingReadiness',
-    ]
-
-    for (const method of methodsToTry) {
-      if (typeof gc[method] === 'function') {
-        console.log(`[garmin-sync-debug] method ${method} EXISTS`)
-        try {
-          const result = await gc[method](today)
-          // Find HRV in result
-          const hrvKeys = findKeys(result, 'hrv')
-          const battKeys = findKeys(result, 'battery')
-          if (hrvKeys.length || battKeys.length) {
-            console.log(`${method} HRV FIELDS:`, JSON.stringify(hrvKeys))
-            console.log(`${method} BATTERY FIELDS:`, JSON.stringify(battKeys))
-            console.log(`${method} RESULT (first 1000):`, JSON.stringify(result).slice(0, 1000))
-          }
-        } catch (e) {
-          console.log(`${method} call failed:`, e.message)
-        }
-      } else {
-        console.log(`[garmin-sync-debug] method ${method} NOT FOUND`)
-      }
-    }
-
-    // ---- Now extract what we can and write snapshot ----
-    const stats   = statsRes.status  === 'fulfilled' ? statsRes.value  : {}
-    const sleep   = sleepRes.status  === 'fulfilled' ? sleepRes.value  : {}
-    const profile = profileRes.status === 'fulfilled' ? profileRes.value : {}
-    const rawActs = activitiesRes.status === 'fulfilled'
+    const daily      = dailyRes.status      === 'fulfilled' ? dailyRes.value      : null
+    const sleepData  = sleepRes.status      === 'fulfilled' ? sleepRes.value      : null
+    const hrvData    = hrvRes.status        === 'fulfilled' ? hrvRes.value        : null
+    const bodyBatData = bodyBatRes.status   === 'fulfilled' ? bodyBatRes.value    : null
+    const rawActs    = activitiesRes.status === 'fulfilled'
       ? (Array.isArray(activitiesRes.value)
           ? activitiesRes.value
           : activitiesRes.value?.activityList || activitiesRes.value?.activities || [])
       : []
+    const profile    = profileRes.status    === 'fulfilled' ? profileRes.value    : null
 
-    // Extract using deepFind to catch any nesting
-    const rhr    = deepFind(stats, 'restingHeartRate') ?? deepFind(stats, 'resting_heart_rate_bpm') ?? null
-    const rhr7   = deepFind(stats, 'lastSevenDaysAvgRestingHeartRate') ?? deepFind(stats, 'last_7_days_avg_resting_hr') ?? null
-    const stress = deepFind(stats, 'averageStressLevel') ?? deepFind(stats, 'avg_stress_level') ?? null
+    console.log('[garmin-sync] daily:', daily ? Object.keys(daily).slice(0,6).join(',') : 'null')
+    console.log('[garmin-sync] sleep:', sleepData ? Object.keys(sleepData).slice(0,6).join(',') : 'null')
+    console.log('[garmin-sync] hrv:', hrvData ? JSON.stringify(hrvData).slice(0,200) : 'null')
+    console.log('[garmin-sync] bodyBat:', bodyBatData ? JSON.stringify(bodyBatData).slice(0,200) : 'null')
+    console.log('[garmin-sync] activities:', rawActs.length)
 
-    // Body battery — try every known field name
-    const bodyBattery = deepFind(stats, 'bodyBatteryCurrent')
-      ?? deepFind(stats, 'body_battery_current')
-      ?? deepFind(stats, 'bodyBatteryHighestValue')
-      ?? deepFind(stats, 'body_battery_highest')
+    // ---- 3. Extract health values ----
+
+    // RHR + stress + SpO2 from daily summary
+    const rhr    = daily?.restingHeartRate      ?? daily?.rhr     ?? null
+    const rhr7   = daily?.lastSevenDaysAvgRhr   ?? null
+    const stress = daily?.averageStressLevel    ?? daily?.stressLevel ?? null
+    const spo2   = daily?.averageSpo2Value      ?? daily?.spo2    ?? null
+    const steps  = daily?.totalSteps            ?? daily?.steps   ?? null
+
+    // Body battery — try the dedicated endpoint first, fall back to daily
+    let bodyBattery = null
+    if (Array.isArray(bodyBatData) && bodyBatData.length) {
+      // endpoint returns array of {startTimestampGMT, endTimestampGMT, bodyBatteryLevel, ...}
+      // take the most recent non-null value
+      bodyBattery = bodyBatData[bodyBatData.length - 1]?.bodyBatteryLevel
+        ?? bodyBatData[bodyBatData.length - 1]?.level
+        ?? null
+    }
+    if (bodyBattery == null) {
+      bodyBattery = daily?.bodyBatteryHighestValue
+        ?? daily?.bodyBatteryMostRecentValue
+        ?? daily?.highestBodyBattery
+        ?? null
+    }
+
+    // Sleep score from sleep data
+    const sleepScore = sleepData?.dailySleepDTO?.sleepScores?.overall?.value
+      ?? sleepData?.sleepScore
+      ?? sleepData?.overallSleepScore
       ?? null
 
-    const spo2   = deepFind(stats, 'averageSpo2') ?? deepFind(stats, 'avg_spo2_percent') ?? null
+    // HRV — try dedicated hrv endpoint first, fall back to sleep data
+    let hrvVal    = null
+    let hrvBaseLo = 40
+    let hrvBaseHi = 49
+    let hrvStatus = null
 
-    // HRV — try every known field name across the sleep response
-    const hrv    = deepFind(sleep, 'avgOvernightHrv')
-      ?? deepFind(sleep, 'avg_overnight_hrv')
-      ?? deepFind(sleep, 'avgOvernightHrvMs')
-      ?? deepFind(sleep, 'lastNightAvgHrv')
-      ?? deepFind(sleep, 'averageHrv')
+    if (hrvData) {
+      // HRV service response shape
+      hrvVal    = hrvData.lastNight?.avgHrv
+        ?? hrvData.avgHrv
+        ?? hrvData.weeklyAvg
+        ?? null
+      hrvBaseLo = hrvData.baseline?.lowUpper  ?? hrvData.balancedLow    ?? 40
+      hrvBaseHi = hrvData.baseline?.balancedUpper ?? hrvData.balancedUpper ?? 49
+      hrvStatus = hrvData.status ?? null
+    }
+    if (hrvVal == null && sleepData) {
+      // Fall back to sleep DTO
+      const dto = sleepData.dailySleepDTO || sleepData
+      hrvVal    = dto.avgOvernightHrv
+        ?? dto.averageOvernightHrv
+        ?? dto.avgHrv
+        ?? null
+      if (!hrvStatus) {
+        hrvStatus = hrvVal != null
+          ? (hrvVal >= hrvBaseLo && hrvVal <= hrvBaseHi ? 'Balanced' : hrvVal > hrvBaseHi ? 'High' : 'Low')
+          : null
+      }
+    }
+
+    // VO2 from profile
+    const vo2 = profile?.userData?.vo2MaxRunning
+      ?? profile?.vo2MaxRunning
       ?? null
 
-    const sleepScore = deepFind(sleep, 'value')  // inside sleepScores.overall.value
-      ?? deepFind(sleep, 'sleepScore')
-      ?? deepFind(sleep, 'sleep_score')
-      ?? null
+    console.log(`[garmin-sync] extracted — RHR:${rhr} stress:${stress} battery:${bodyBattery} HRV:${hrvVal} sleep:${sleepScore} VO2:${vo2}`)
 
-    const vo2    = deepFind(profile, 'vo2MaxRunning') ?? null
-
-    console.log(`=== EXTRACTED VALUES ===`)
-    console.log(`RHR: ${rhr}, RHR7: ${rhr7}, Stress: ${stress}`)
-    console.log(`Body battery: ${bodyBattery}, SpO2: ${spo2}`)
-    console.log(`HRV: ${hrv}, Sleep score: ${sleepScore}`)
-    console.log(`VO2: ${vo2}`)
-
+    // ---- 4. Compute readiness ----
     const readiness = calcReadiness({
-      hrv, hrvBaseLo: 40, hrvBaseHi: 49,
+      hrv: hrvVal, hrvBaseLo, hrvBaseHi,
       rhr, rhr7, sleep: sleepScore, stress, bodyBattery,
     })
-    console.log(`Readiness: ${readiness}`)
+    const recoveryHrs = readiness >= 70 ? '1 hr' : readiness >= 50 ? '4 hr' : '24 hr'
 
-    // Write snapshot with whatever we have
+    console.log(`[garmin-sync] readiness: ${readiness}`)
+
+    // ---- 5. Write fitness snapshot ----
     try {
       await sbPost('fitness_snapshot', {
         athlete_id:      ATHLETE_ID,
         synced_at:       new Date().toISOString(),
         readiness,
-        recovery_hrs:    readiness < 50 ? '24 hr' : '1 hr',
+        recovery_hrs:    recoveryHrs,
         rhr,
         rhr_7day:        rhr7,
-        hrv:             hrv != null ? Math.round(hrv) : null,
-        hrv_status:      hrv != null ? (hrv >= 40 && hrv <= 49 ? 'Balanced' : hrv > 49 ? 'High' : 'Low') : null,
+        hrv:             hrvVal != null ? Math.round(hrvVal) : null,
+        hrv_status:      hrvStatus,
         sleep:           sleepScore,
-        body_battery:    bodyBattery,
-        stress,
+        body_battery:    bodyBattery != null ? Math.round(bodyBattery) : null,
+        stress:          stress != null ? Math.round(stress) : null,
         spo2,
         vo2,
         lt_hr:           173,
@@ -272,35 +246,34 @@ export default async function handler() {
         chronic_band_hi: 482,
         balance:         null,
       })
-      console.log('[garmin-sync-debug] snapshot written')
+      console.log('[garmin-sync] snapshot written')
     } catch (e) {
-      console.error('[garmin-sync-debug] snapshot error:', e.message)
       errors.push('snapshot: ' + e.message)
+      console.error('[garmin-sync] snapshot error:', e.message)
     }
 
-    // Update HRV trend
-    if (hrv != null) {
+    // ---- 6. Update HRV trend ----
+    if (hrvVal != null) {
       await sbPost('hrv_trend',
-        [{ athlete_id: ATHLETE_ID, day: today, hrv: Math.round(hrv) }],
+        [{ athlete_id: ATHLETE_ID, day: today, hrv: Math.round(hrvVal) }],
         'athlete_id,day',
-      ).catch((e) => errors.push('hrv_trend: ' + e.message))
+      ).catch(e => errors.push('hrv_trend: ' + e.message))
     }
 
-    // Write recent runs
-    const runs = rawActs.filter((a) => {
+    // ---- 7. Process runs ----
+    const runs = rawActs.filter(a => {
       const type = a.activityType?.typeKey || a.type || ''
       const dist = a.distance || a.distanceMeters || a.distance_meters || 0
       return type.includes('running') && dist > 500
     })
 
-    for (const run of runs.slice(0, 10)) {
+    for (const run of runs.slice(0, 15)) {
       const actId  = run.activityId || run.id
       const distM  = run.distance || run.distanceMeters || run.distance_meters || 0
       const distKm = parseFloat((distM / 1000).toFixed(2))
       const movSec = run.movingDuration || run.moving_duration_seconds || 0
       const durSec = run.duration || run.duration_seconds || 0
       const dateStr = (run.startTimeLocal || run.start_time || today).slice(0, 10)
-      const pace   = calculatePace(distM, movSec || durSec)
 
       try {
         await sbPost('recent_runs', {
@@ -309,16 +282,116 @@ export default async function handler() {
           run_date:           dateStr,
           title:              run.activityName || run.name || 'Run',
           distance_km:        distKm,
-          pace,
+          pace:               calculatePace(distM, movSec || durSec),
           avg_hr:             run.averageHR || run.avg_hr_bpm || null,
           relative_effort:    run.trainingEffect ?? null,
         }, 'garmin_activity_id')
+
+        // Full activity detail — skip if already stored
+        const existing = await sbGet('activity_details',
+          `garmin_activity_id=eq.${actId}&select=id&limit=1`).catch(() => [])
+        if (existing.length > 0) { activitiesWritten++; continue }
+
+        // Pull detail + splits in parallel
+        const [detailRes, splitsRes, hrZonesRes] = await Promise.allSettled([
+          gc.getActivity({ activityId: actId }),
+          gc.getActivitySplits({ activityId: actId }),
+          gcGet(gc, `${BASE}/activity-service/activity/${actId}/hrTimeInZones`),
+        ])
+
+        const d  = detailRes.status  === 'fulfilled' ? detailRes.value  : null
+        const sp = splitsRes.status  === 'fulfilled' ? splitsRes.value  : null
+        const hz = hrZonesRes.status === 'fulfilled' ? hrZonesRes.value : null
+
+        const detailRows = await sbPost('activity_details', {
+          athlete_id:               ATHLETE_ID,
+          garmin_activity_id:       actId,
+          activity_date:            dateStr,
+          start_time_local:         run.startTimeLocal || run.start_time_local || null,
+          name:                     run.activityName || run.name || 'Run',
+          type:                     'running',
+          distance_km:              distKm,
+          duration_seconds:         Math.round(durSec),
+          moving_duration_seconds:  Math.round(movSec),
+          pace_avg:                 calculatePace(distM, movSec || durSec),
+          pace_best:                d?.maxSpeed ? calculatePace(1000, 1000 / d.maxSpeed) : null,
+          avg_hr:                   d?.avgHrBpm  || run.averageHR || null,
+          max_hr:                   d?.maxHrBpm  || run.maxHR     || null,
+          min_hr:                   d?.minHrBpm  || null,
+          avg_cadence:              d?.avgCadence ? Math.round(d.avgCadence) : null,
+          avg_power_watts:          d?.avgPowerWatts        ?? null,
+          normalized_power_watts:   d?.normalizedPowerWatts ?? null,
+          avg_stride_cm:            d?.avgStrideLength       ?? null,
+          avg_ground_contact_ms:    d?.avgGroundContactTime  ?? null,
+          avg_vertical_osc_cm:      d?.avgVerticalOscillation ?? null,
+          training_load:            d?.trainingLoad           ?? null,
+          aerobic_effect:           d?.trainingEffect         ?? null,
+          anaerobic_effect:         d?.anaerobicTrainingEffect ?? null,
+          training_effect_label:    d?.trainingEffectLabel    ?? null,
+          calories:                 d?.calories || run.calories || null,
+          elevation_gain_m:         d?.elevationGain || run.elevationGain || null,
+          elevation_loss_m:         d?.elevationLoss || null,
+          max_elevation_m:          d?.maxElevation  || null,
+          min_elevation_m:          d?.minElevation  || null,
+          workout_feel:             d?.workoutFeel   || null,
+          workout_rpe:              d?.workoutRpe    || null,
+          body_battery_impact:      d?.bodyBatteryImpact || null,
+          recovery_hr_bpm:          d?.recoveryHrBpm    || null,
+        }, 'garmin_activity_id')
+
+        const detailId = Array.isArray(detailRows) ? detailRows[0]?.id : detailRows?.id
+        if (detailId) {
+          // Laps
+          const laps = sp?.lapDTOs || sp?.laps || []
+          const meaningful = laps.filter(l => (l.distance || l.distanceMeters || 0) > 100)
+          if (meaningful.length) {
+            await sbPost('activity_laps',
+              meaningful.map(l => {
+                const lapDist = l.distance || l.distanceMeters || 0
+                const lapMov  = l.movingDuration || l.duration || 0
+                return {
+                  activity_id:      detailId,
+                  lap_number:       l.lapIndex ?? l.lap_number,
+                  distance_m:       parseFloat(lapDist.toFixed(2)),
+                  duration_seconds: parseFloat((l.duration || 0).toFixed(3)),
+                  avg_pace:         lapDist > 100 && lapMov > 0 ? calculatePace(lapDist, lapMov) : null,
+                  avg_hr:           l.averageHR  || l.avg_hr_bpm || null,
+                  max_hr:           l.maxHR      || l.max_hr_bpm || null,
+                  avg_cadence:      (l.averageCadence || l.avg_cadence)
+                    ? Math.round(l.averageCadence || l.avg_cadence) : null,
+                  avg_power_watts:  l.avgPower || l.avg_power_watts || null,
+                  elevation_gain_m: l.elevationGain || l.elevation_gain_meters || null,
+                  intensity_type:   l.intensityType || l.intensity_type || null,
+                }
+              }),
+              'activity_id,lap_number',
+            ).catch(e => errors.push('laps: ' + e.message))
+          }
+
+          // HR zones
+          const zones = Array.isArray(hz) ? hz
+            : hz?.timeInHeartRateZones || hz?.heartRateZones || []
+          if (zones.length) {
+            await sbPost('activity_hr_zones',
+              zones.map(z => ({
+                activity_id:  detailId,
+                zone_number:  z.zoneNumber ?? z.zone,
+                secs_in_zone: z.secsInZone ?? z.seconds ?? z.duration,
+                zone_low_bpm: z.zoneLowBoundary ?? z.min,
+              })),
+              'activity_id,zone_number',
+            ).catch(e => errors.push('hr_zones: ' + e.message))
+          }
+        }
+
         activitiesWritten++
+        console.log(`[garmin-sync] wrote activity ${actId}`)
       } catch (e) {
-        errors.push(`run ${actId}: ${e.message}`)
+        errors.push(`activity ${actId}: ${e.message}`)
       }
     }
 
+    // ---- 8. Sync log ----
     await sbPost('daily_sync_log', {
       sync_date:          today,
       synced_at:          new Date().toISOString(),
@@ -327,12 +400,14 @@ export default async function handler() {
       activities_written: activitiesWritten,
     }, 'sync_date')
 
+    console.log(`[garmin-sync] done — readiness:${readiness} hrv:${hrvVal} battery:${bodyBattery} activities:${activitiesWritten} errors:${errors.length}`)
+
     return new Response(JSON.stringify({
-      ok: true, today, readiness, hrv, bodyBattery, stress, rhr, sleepScore, errors,
+      ok: true, today, readiness, hrv: hrvVal, bodyBattery, stress, rhr, sleepScore, activitiesWritten, errors,
     }), { headers: { 'content-type': 'application/json' } })
 
   } catch (err) {
-    console.error('[garmin-sync-debug] fatal:', err.message, err.stack?.slice(0, 500))
+    console.error('[garmin-sync] fatal:', err.message)
     try {
       await sbPost('daily_sync_log', {
         sync_date: todayAEST(), synced_at: new Date().toISOString(),
