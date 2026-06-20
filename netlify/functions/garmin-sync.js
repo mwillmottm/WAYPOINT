@@ -11,7 +11,7 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
 const ATHLETE_ID           = process.env.ATHLETE_ID
 
 export const config = {
-  schedule: ['30 18 * * *', '0 22 * * *', '0 2 * * *', '0 9 * * *'],
+  schedule: '* * * * *',
 }
 
 function todayAEST() {
