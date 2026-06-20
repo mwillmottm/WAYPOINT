@@ -1,4 +1,7 @@
-// src/lib/api.js  (v2 — with auto-sync awareness and optimistic updates)
+// src/lib/api.js
+// Domain layer: turns Supabase tables into the shapes the dashboard uses,
+// and writes user actions back. Includes activity detail fetching for
+// the Strava-style run cards and Today's logged run display.
 
 import { sbGet, sbUpsert, sbPatch } from './supabase.js'
 
@@ -62,7 +65,9 @@ export async function getSnapshot() {
 
   return {
     syncedAt,
-    lastAutoSync: lastSync ? { date: lastSync.sync_date, status: lastSync.status, error: lastSync.error_msg } : null,
+    lastAutoSync: lastSync
+      ? { date: lastSync.sync_date, status: lastSync.status, error: lastSync.error_msg, activities: lastSync.activities_written }
+      : null,
     athlete: { name: a.name, loc: a.location, weight: a.weight_kg },
     readiness: s.readiness, recoveryHrs: s.recovery_hrs, rhr: s.rhr, rhr7: s.rhr_7day,
     hrv: s.hrv, hrvStatus: s.hrv_status, sleep: s.sleep, battery: s.body_battery,
@@ -76,6 +81,7 @@ export async function getSnapshot() {
     recent: runs.map((r) => ({
       d: fmtDM(r.run_date), t: r.title, km: +r.distance_km,
       pace: r.pace, re: r.relative_effort, hr: r.avg_hr,
+      garminId: r.garmin_activity_id,
     })),
     stream: {
       dist, hr: hrArr, pace: paceArr, alt: altArr,
@@ -83,6 +89,46 @@ export async function getSnapshot() {
       avgPace: secToPace(mean(paceArr)), climb: Math.round(climb),
     },
   }
+}
+
+// ---------------- ACTIVITY DETAIL (used by Today + Fitness) ----------------
+export async function getRecentActivityDetails(limit = 7) {
+  // Gracefully return empty array if activity_details table doesn't exist yet
+  const acts = await sbGet(
+    'activity_details',
+    `select=*&order=activity_date.desc&limit=${limit}`,
+  ).catch(() => [])
+
+  if (!acts.length) return []
+
+  const ids = acts.map((a) => a.id)
+
+  const [allLaps, allZones] = await Promise.all([
+    sbGet('activity_laps', `activity_id=in.(${ids.join(',')})&select=*&order=lap_number`).catch(() => []),
+    sbGet('activity_hr_zones', `activity_id=in.(${ids.join(',')})&select=*&order=zone_number`).catch(() => []),
+  ])
+
+  return acts.map((act) => ({
+    ...act,
+    laps: allLaps.filter((l) => l.activity_id === act.id),
+    hrZones: allZones.filter((z) => z.activity_id === act.id),
+  }))
+}
+
+export async function getActivityDetail(garminActivityId) {
+  const rows = await sbGet(
+    'activity_details',
+    `garmin_activity_id=eq.${garminActivityId}&select=*&limit=1`,
+  ).catch(() => [])
+  if (!rows.length) return null
+  const act = rows[0]
+
+  const [laps, hrZones] = await Promise.all([
+    sbGet('activity_laps', `activity_id=eq.${act.id}&select=*&order=lap_number`).catch(() => []),
+    sbGet('activity_hr_zones', `activity_id=eq.${act.id}&select=*&order=zone_number`).catch(() => []),
+  ])
+
+  return { ...act, laps, hrZones }
 }
 
 // ---------------- PLAN ----------------
