@@ -1,40 +1,178 @@
-import { IconCoach } from '../icons.jsx'
+import { useState, useRef, useEffect } from 'react'
+import { IconCoach, IconRefresh } from '../icons.jsx'
+import { SNAP as SNAP_FALLBACK } from '../../data/snapshot.js'
+import { TODAY_ISO } from '../../data/snapshot.js'
+import { findDay, currentWeek } from '../../lib/utils.js'
+import { KIND } from '../../data/plan.js'
 
-const CARDS = [
-  { t: 'Threshold is the engine', c: '#C2703F', b: 'You thrive on tempo and threshold, so the block is built around it — cruise intervals, float threshold, tempo progressions and threshold buried inside long runs. The aim is to accumulate lots of time at 5:45–5:55 without ever tipping into a race. Run the same pace from the first rep to the last; even efforts compound, heroic ones cost you the next session.' },
-  { t: 'Aerobic base carries it all', c: '#C9954F', b: 'Threshold only pays off when it sits on a deep aerobic floor. Your “Aerobic” pace (6:35–6:55) gets its own steady mid-week runs, and the easy days stay genuinely easy. Most of your week is unglamorous aerobic volume — that’s the point. It’s the soil the quality grows in.' },
-  { t: 'Back-to-backs build the ultra', c: '#A07C53', b: 'A 50K is run on tired legs, so we rehearse exactly that. The Sunday medium-long the morning after your long run teaches fatigue resistance better than any single big run could. By peak week, a 32 km Saturday plus a 15 km Sunday is your dress rehearsal for race-day durability.' },
-  { t: 'Coming back from illness', c: '#7E8C6A', b: 'You’re returning from a five-day lay-off, and the smart move is patience, not catch-up. Frequency rebuilds you faster than intensity: easy, short, often. Your HRV and resting HR are already green, which is your green light to ramp — but let the body confirm it run by run before stacking the hard days back on.' },
-  { t: 'Fuelling the distance', c: '#BC6B47', b: 'Practise race fuelling on every long run: 50–70 g of carbohydrate per hour from the 40-minute mark, with fluid and electrolytes to match. Train the gut like a muscle now so race day holds no surprises. Going in under-fuelled is the most common way a strong 50K runner unravels in the final 10 km.' },
-  { t: 'Read the signals, not the ego', c: '#7E97A6', b: 'The dashboard surfaces readiness, HRV, resting HR and load for a reason. A red morning means swap the quality day for easy or rest — you lose nothing and protect everything. Adjusting around a bad day is training maturity, not weakness. The plan serves you; you don’t serve the plan.' },
-  { t: 'Taper with trust', c: '#C99A4B', b: 'The final two weeks cut volume hard while keeping a whisper of intensity so the legs stay sharp. You’ll feel twitchy and want to do more — don’t. Fitness is banked weeks earlier; the taper just lets it surface. Arrive at the start line slightly under-done rather than a single session over.' },
+const QUICK_PROMPTS = [
+  { label: 'Explain today\'s session', key: 'today' },
+  { label: 'Replan this week', key: 'replan' },
+  { label: 'Am I on track for 50K?', key: 'track' },
+  { label: 'What do my fitness numbers mean?', key: 'fitness' },
+  { label: 'How should I fuel on long runs?', key: 'fuel' },
+  { label: 'I\'m feeling tired — what should I do?', key: 'tired' },
 ]
 
-export function Coach() {
-  return (
-    <div className="animate-rise">
-      <div className="eyebrow">Coaching philosophy · the road to 50K</div>
-      <h1 className="pagetitle mt-1.5">Coach’s <span className="thin">notebook</span></h1>
-      <p className="text-[14px] text-slate mt-2 max-w-2xl leading-relaxed">
-        The principles behind your block — threshold-led, aerobically deep, and built to get you to the start line healthy and to the finish line strong.
-      </p>
+function buildSystemPrompt(snap, plan, today) {
+  const SNAP = snap || SNAP_FALLBACK
+  const week = currentWeek(plan)
+  const day = findDay(plan, TODAY_ISO)
+  const k = day ? KIND[day.kind] : null
 
-      <div className="grid md:grid-cols-2 gap-4 mt-5">
-        {CARDS.map((c) => (
-          <div key={c.t} className="card p-5 relative overflow-hidden">
-            <span className="absolute inset-y-0 left-0 w-1" style={{ background: c.c }} />
-            <h3 className="font-display text-[17px] text-ink mb-2 pl-1">{c.t}</h3>
-            <p className="text-[13.5px] text-slate leading-relaxed pl-1">{c.b}</p>
-          </div>
+  return `You are WAYPOINT, an experienced running coach specialising in ultramarathon training. You coach Mol Willmott, a woman based in Torquay, Surf Coast VIC, Australia. She is training for a 50K ultramarathon on 12 September 2026.
+
+CURRENT FITNESS (synced from Garmin today):
+- Readiness: ${SNAP.readiness}/100
+- HRV: ${SNAP.hrv} ms (status: ${SNAP.hrvStatus})
+- Resting HR: ${SNAP.rhr} bpm (7-day avg: ${SNAP.rhr7})
+- Body battery: ${SNAP.battery}%
+- Sleep: ${SNAP.sleep}/100
+- VO₂ max: ${SNAP.vo2}
+- Threshold HR: ${SNAP.ltHr} bpm
+- Acute load: ${SNAP.acute} | Chronic load: ${SNAP.chronic} | ACWR: ${SNAP.acwr}
+- Training status: ${SNAP.status}
+- Training balance: ${SNAP.balance}
+
+MOL'S TRAINING ZONES (from Garmin):
+- Recover/SJ: 7:50–8:20/km | Easy: 7:15–7:50 | Aerobic: 6:35–6:55 | Threshold: 5:45–5:55 | 5K: 5:10–5:20 | Interval: 5:00–5:10 | Rep: 4:45–4:55
+
+CURRENT WEEK: Week ${week?.n ?? '—'} · ${week?.phase ?? ''} · ${week?.note ?? ''}
+
+TODAY (${TODAY_ISO}): ${day?.title ?? 'Rest day'} — ${day?.km ?? '—'} km ${k ? '(' + k.label + ')' : ''}
+${day?.purpose ? 'Purpose: ' + day.purpose : ''}
+
+COACHING PHILOSOPHY: Threshold and tempo-led. Inspired by Jeff Cunningham, Brock Kelly, Canova/NCAA systems. Deep aerobic base. Weekend back-to-backs for ultra durability. Real data drives decisions — if the numbers say rest, we rest.
+
+INSTRUCTIONS: Be direct, warm, and specific. Use actual numbers from the data above. Keep responses concise (3–5 sentences for simple questions, up to 8 for complex ones). When asked to replan the week, give concrete day-by-day suggestions. Never fabricate quotes. If asked something outside coaching, redirect gently.`
+}
+
+function Message({ msg }) {
+  const isUser = msg.role === 'user'
+  return (
+    <div className={`flex gap-2.5 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+      {!isUser && (
+        <div className="w-7 h-7 rounded-lg bg-clay grid place-items-center text-bone shrink-0 mt-0.5">
+          <IconCoach className="w-3.5 h-3.5" />
+        </div>
+      )}
+      <div className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-wrap
+        ${isUser ? 'bg-clay text-bone rounded-br-sm ml-auto' : 'bg-bone border border-line-soft text-ink rounded-bl-sm'}`}>
+        {msg.content}
+        {msg.loading && <span className="inline-block w-1 h-3.5 bg-clay ml-0.5 animate-pulse" />}
+      </div>
+    </div>
+  )
+}
+
+export function Coach({ ctx }) {
+  const { plan, snap } = ctx
+  const SNAP = snap || SNAP_FALLBACK
+
+  const [messages, setMessages] = useState([
+    {
+      role: 'assistant',
+      content: `Hi Mol 👋 I'm your WAYPOINT coach. I can see your latest data — readiness ${SNAP.readiness}/100, HRV ${SNAP.hrv} ms, and you're in ${currentWeek(plan)?.phase || 'the'} phase. What would you like to know?`,
+    }
+  ])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const bottomRef = useRef(null)
+  const inputRef = useRef(null)
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+
+  const send = async (text) => {
+    const userText = (text || input).trim()
+    if (!userText || loading) return
+    setInput('')
+
+    const userMsg = { role: 'user', content: userText }
+    const thinkingMsg = { role: 'assistant', content: '', loading: true }
+    setMessages(prev => [...prev, userMsg, thinkingMsg])
+    setLoading(true)
+
+    try {
+      const history = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }))
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1000,
+          system: buildSystemPrompt(SNAP, plan, TODAY_ISO),
+          messages: history,
+        }),
+      })
+      const data = await res.json()
+      const reply = data.content?.find(b => b.type === 'text')?.text || 'Sorry, I couldn\'t respond right now.'
+      setMessages(prev => [...prev.slice(0, -1), { role: 'assistant', content: reply }])
+    } catch {
+      setMessages(prev => [...prev.slice(0, -1), { role: 'assistant', content: 'Connection issue — try again in a moment.' }])
+    }
+    setLoading(false)
+    inputRef.current?.focus()
+  }
+
+  const quickSend = (key) => {
+    const prompts = {
+      today: `Can you explain today's session in detail — what I should focus on, pacing targets, and why it's in the plan at this point?`,
+      replan: `My readiness is ${SNAP.readiness} today. Can you replan this week around that, keeping the long run protected?`,
+      track: `Based on my current fitness data and training load, am I on track for the 50K on 12 September?`,
+      fitness: `Can you explain what my fitness numbers mean — readiness ${SNAP.readiness}, HRV ${SNAP.hrv}ms, ACWR ${SNAP.acwr}, chronic load ${SNAP.chronic}?`,
+      fuel: `What's the best fuelling strategy for my long runs building toward 50K?`,
+      tired: `I'm feeling tired and my readiness is ${SNAP.readiness}. What should I do with today's session and the rest of this week?`,
+    }
+    send(prompts[key])
+  }
+
+  const clearChat = () => {
+    setMessages([{ role: 'assistant', content: `Chat cleared. Readiness is ${SNAP.readiness}/100 today — what do you need?` }])
+  }
+
+  return (
+    <div className="animate-rise flex flex-col h-[calc(100dvh-140px)] lg:h-[calc(100dvh-80px)]">
+      {/* header */}
+      <div className="flex items-center justify-between mb-3 shrink-0">
+        <div>
+          <div className="eyebrow">AI coaching · live</div>
+          <h1 className="pagetitle mt-0.5">Coach <span className="thin">chat</span></h1>
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={clearChat}>
+          <IconRefresh className="w-3.5 h-3.5" />Clear
+        </button>
+      </div>
+
+      {/* quick prompts */}
+      <div className="flex gap-2 overflow-x-auto pb-2 shrink-0 scrollbar-none">
+        {QUICK_PROMPTS.map(p => (
+          <button key={p.key} onClick={() => quickSend(p.key)} disabled={loading}
+            className="shrink-0 text-[11.5px] font-semibold px-3 py-2 rounded-xl border border-line bg-bone hover:border-clay hover:text-clay transition whitespace-nowrap text-slate">
+            {p.label}
+          </button>
         ))}
       </div>
 
-      <div className="card p-5 mt-4 flex gap-4" style={{ background: 'linear-gradient(120deg,#FBF6EE,#F6EFE4)' }}>
-        <div className="w-9 h-9 shrink-0 rounded-lg bg-clay grid place-items-center text-bone"><IconCoach className="w-5 h-5" /></div>
-        <p className="text-[13.5px] text-slate leading-relaxed">
-          <b className="text-ink">A note on the jump.</b> Going from your current 10 km runs to a 50K in twelve weeks is ambitious, and it works on one condition: consistency over heroics.
-          The threshold work will feel great because it’s your strength — the discipline is keeping the easy days easy and honouring the deloads so the quality keeps landing. Miss a day, shrug, move on. Stack the weeks and the distance takes care of itself.
-        </p>
+      {/* message thread */}
+      <div className="flex-1 overflow-y-auto space-y-3 py-3 min-h-0">
+        {messages.map((msg, i) => <Message key={i} msg={msg} />)}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* input */}
+      <div className="shrink-0 pt-3 border-t border-line">
+        <div className="flex gap-2">
+          <input ref={inputRef} className="input flex-1 text-[14px]"
+            value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
+            placeholder="Ask about a session, your fitness, or anything training…"
+            disabled={loading} />
+          <button className="btn btn-primary shrink-0" onClick={() => send()} disabled={loading || !input.trim()}>
+            {loading ? '…' : '↑'}
+          </button>
+        </div>
+        <div className="text-[10px] text-muted mt-1.5 text-center">Powered by Claude · Uses your live Garmin data</div>
       </div>
     </div>
   )
