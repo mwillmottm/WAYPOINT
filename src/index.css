@@ -3,41 +3,64 @@
 @tailwind utilities;
 
 @layer base {
-  html { scroll-behavior: smooth; }
+  html {
+    scroll-behavior: smooth;
+    /* prevent iOS bounce on the outer body */
+    overscroll-behavior: none;
+  }
   body {
     @apply bg-sand text-ink font-sans antialiased;
     background-image:
-      radial-gradient(900px 520px at 88% -10%, rgba(188,107,71,.07), transparent 60%),
-      radial-gradient(760px 480px at 4% 108%, rgba(126,140,106,.07), transparent 60%);
+      radial-gradient(900px 520px at 88% -10%, rgba(188,107,71,.06), transparent 60%),
+      radial-gradient(760px 480px at 4% 108%, rgba(126,140,106,.06), transparent 60%);
     background-attachment: fixed;
+    /* safe area padding on notched phones */
+    padding-bottom: env(safe-area-inset-bottom);
   }
   ::selection { @apply bg-clay/20; }
   h1,h2,h3 { @apply font-display; }
+  /* ensure taps feel fast on mobile */
+  button, a { touch-action: manipulation; }
 }
 
 @layer components {
-  .card { @apply bg-shell border border-line rounded-xl2 shadow-soft; }
-  .eyebrow { @apply text-[11px] tracking-[.18em] uppercase text-clay font-semibold; }
-  .pagetitle { @apply font-display text-[26px] sm:text-[30px] leading-tight text-ink; }
+  .card        { @apply bg-shell border border-line rounded-xl shadow-soft; }
+  .eyebrow     { @apply text-[11px] tracking-[.18em] uppercase text-clay font-semibold; }
+  .pagetitle   { @apply font-display text-[24px] sm:text-[28px] leading-tight text-ink; }
   .pagetitle .thin { @apply text-muted font-normal; }
-  .btn { @apply inline-flex items-center gap-2 rounded-xl font-semibold text-sm px-4 py-2.5 transition; }
+  .btn         { @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold text-[13.5px] px-4 py-2.5 transition active:scale-[.97]; }
   .btn-primary { @apply bg-clay text-bone hover:bg-clay-deep; }
-  .btn-ghost { @apply border border-line bg-bone text-ink hover:border-clay hover:text-clay; }
-  .btn-sm { @apply px-3 py-2 text-[13px]; }
-  .pill { @apply inline-flex items-center text-[10.5px] font-bold tracking-wide uppercase px-2.5 py-1 rounded-full; }
+  .btn-ghost   { @apply border border-line bg-bone text-ink hover:border-clay hover:text-clay; }
+  .btn-sm      { @apply px-3 py-2 text-[12.5px] rounded-lg; }
+  .pill        { @apply inline-flex items-center text-[10px] font-bold tracking-wide uppercase px-2.5 py-1 rounded-full; }
   .field-label { @apply block text-[11px] uppercase tracking-[.1em] text-muted font-semibold mb-1.5; }
-  .input { @apply w-full bg-bone border border-line rounded-lg px-3 py-2.5 text-sm text-ink
-           focus:outline-none focus:border-clay focus:ring-2 focus:ring-clay/15 transition; }
-  .mono { @apply font-mono; }
-  .section-label { @apply flex items-center gap-3 text-[12px] tracking-[.14em] uppercase text-muted font-semibold; }
+  .input       { @apply w-full bg-bone border border-line rounded-lg px-3 py-2.5 text-sm text-ink
+                 focus:outline-none focus:border-clay focus:ring-2 focus:ring-clay/15 transition; }
+  .section-label { @apply flex items-center gap-3 text-[11px] tracking-[.14em] uppercase text-muted font-semibold; }
   .section-label::after { content:""; @apply flex-1 h-px bg-line; }
+  /* hide scrollbar but keep scroll */
+  .scrollbar-none { scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
 }
 
-/* thin scrollbars for the desert theme */
-* { scrollbar-width: thin; scrollbar-color: #D8CcB6 transparent; }
-*::-webkit-scrollbar { height: 8px; width: 8px; }
-*::-webkit-scrollbar-thumb { background: #DCD0BB; border-radius: 8px; }
+/* thin scrollbars on desktop */
+@media (pointer: fine) {
+  * { scrollbar-width: thin; scrollbar-color: #D8CcB6 transparent; }
+  *::-webkit-scrollbar { height: 6px; width: 6px; }
+  *::-webkit-scrollbar-thumb { background: #DCD0BB; border-radius: 8px; }
+}
+
+/* iOS-safe bottom nav spacing */
+.mobile-nav-safe {
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+@keyframes rise {
+  0%   { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: none; }
+}
+.animate-rise { animation: rise .35s ease both; }
 
 @media (prefers-reduced-motion: reduce) {
-  * { animation: none !important; transition: none !important; scroll-behavior: auto; }
+  * { animation: none !important; transition: none !important; }
 }
