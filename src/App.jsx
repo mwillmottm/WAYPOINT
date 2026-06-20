@@ -22,45 +22,60 @@ export default function App() {
 
   const ctx = { ...wp, openModal }
 
-  const onSync = () => { wp.reload(); wp.setToast('Refreshing from Supabase…') }
-
   const PAGES = {
-    today: <Today ctx={ctx} />,
-    week: <Week ctx={ctx} />,
-    plan: <Plan ctx={ctx} />,
+    today:   <Today   ctx={ctx} />,
+    week:    <Week    ctx={ctx} />,
+    plan:    <Plan    ctx={ctx} />,
     fitness: <Fitness ctx={ctx} />,
-    zones: <Zones ctx={ctx} />,
-    coach: <Coach ctx={ctx} />,
+    zones:   <Zones   ctx={ctx} />,
+    coach:   <Coach   ctx={ctx} />,
     reroute: <Reroute ctx={ctx} />,
   }
 
   const modalDay = modalDate ? findDay(wp.plan, modalDate) : null
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-dvh flex bg-sand">
+      {/* desktop sidebar */}
       <Sidebar tab={wp.tab} setTab={wp.setTab} />
-      <div className="flex-1 min-w-0 flex flex-col pb-20 lg:pb-0">
-        <TopBar tab={wp.tab} onSync={onSync} snap={wp.snap} />
+
+      {/* main content */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        <TopBar tab={wp.tab}
+          onSync={() => { wp.reload(); wp.setToast('Refreshing from Supabase…') }}
+          snap={wp.snap} status={wp.status} />
+
+        {/* offline banner */}
         {wp.status === 'offline' && (
-          <div className="px-5 sm:px-7 py-2 bg-ochre/[.12] border-b border-ochre/30 text-[12.5px] text-[#9c7a2e] flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-ochre" />
-            Showing bundled data — couldn’t reach Supabase. Edits are saved locally and will sync when the connection returns.
+          <div className="px-4 py-2 bg-ochre/10 border-b border-ochre/25 text-[12px] text-[#9c7a2e] flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-ochre shrink-0" />
+            Showing cached data — Supabase unreachable.
             <button onClick={wp.reload} className="ml-auto font-semibold underline">Retry</button>
           </div>
         )}
-        <main key={wp.tab} className="px-5 sm:px-7 py-6 max-w-[1180px] w-full mx-auto">
+
+        {/* page content — extra bottom padding on mobile for nav */}
+        <main key={wp.tab}
+          className="flex-1 overflow-y-auto px-4 sm:px-6 pt-4 pb-24 lg:pb-6 max-w-[1160px] w-full mx-auto">
           {PAGES[wp.tab]}
         </main>
       </div>
+
+      {/* mobile bottom nav */}
       <MobileNav tab={wp.tab} setTab={wp.setTab} />
 
+      {/* day edit modal */}
       {modalDay && (
         <DayModal
           day={modalDay}
           done={wp.isDone(modalDay.date)}
           onClose={closeModal}
           onToggleDone={wp.toggleDone}
-          onSave={(date, patch) => { wp.setOverride(date, patch); closeModal(); wp.setToast('Session updated') }}
+          onSave={(date, patch) => {
+            wp.setOverride(date, patch)
+            closeModal()
+            wp.setToast('Session updated')
+          }}
         />
       )}
 
