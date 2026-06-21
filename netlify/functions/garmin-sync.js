@@ -175,10 +175,6 @@ export default async function handler() {
       rhr, rhr7, sleep: sleepScore, stress, bodyBattery,
     })
     const recoveryHrs = readiness >= 70 ? '1 hr' : readiness >= 50 ? '4 hr' : '24 hr'
-    if (!hrvStatus && finalHrv != null) {
-      hrvStatus = finalHrv >= hrvBaseLo && finalHrv <= hrvBaseHi ? 'Balanced'
-        : finalHrv > hrvBaseHi ? 'High' : 'Low'
-    }
 
     console.log(`[garmin-sync] readiness: ${readiness}`)
 
