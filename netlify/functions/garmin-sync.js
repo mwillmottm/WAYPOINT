@@ -135,55 +135,34 @@ export default async function handler() {
     if (sleepRes.status === 'rejected') errors.push('sleep: ' + sleepRes.reason?.message)
     if (heartRes.status === 'rejected') errors.push('heart: ' + heartRes.reason?.message)
 
-    // Log the full dailySleepDTO keys so we know exact field names
-    const dto = sleepRaw?.dailySleepDTO || sleepRaw || {}
-    console.log('[garmin-sync] dailySleepDTO keys:', Object.keys(dto).join(', '))
+    // CONFIRMED FIELD LOCATIONS from live data inspection:
+    // - sleepRaw.dailySleepDTO  → sleepScores, avgSleepStress, averageSpO2Value
+    // - sleepRaw (TOP LEVEL)    → avgOvernightHrv, hrvStatus, sleepBodyBattery[]
+    const dto = sleepRaw?.dailySleepDTO || {}
 
-    // Extract sleep fields
+    // Extract sleep fields from DTO
     const sleepScore = dto.sleepScores?.overall?.value ?? dto.sleepScore ?? null
     const stress     = dto.avgSleepStress ?? null
     const spo2       = dto.averageSpO2Value ?? null
 
-    // HRV — try every possible camelCase variant from the DTO
-    const hrv = dto.avgOvernightHrv
-      ?? dto.averageOvernightHrv
-      ?? dto.avgHrv
-      ?? dto.hrv
-      ?? dto.overnightHrv
-      ?? null
+    // HRV — CONFIRMED at sleepRaw top level, NOT inside dailySleepDTO
+    const finalHrv  = sleepRaw?.avgOvernightHrv ?? null
+    const hrvStatus = sleepRaw?.hrvStatus
+      ? (sleepRaw.hrvStatus.charAt(0) + sleepRaw.hrvStatus.slice(1).toLowerCase())
+      : (finalHrv != null ? (finalHrv >= 40 && finalHrv <= 49 ? 'Balanced' : finalHrv > 49 ? 'High' : 'Low') : null)
+    const hrvBaseLo = 40
+    const hrvBaseHi = 49
 
-    // If HRV still null after sleep DTO, try the dedicated HRV endpoint
-    let finalHrv    = hrv
-    let hrvBaseLo   = dto.baselineBalancedLow    ?? 40
-    let hrvBaseHi   = dto.baselineBalancedUpper  ?? 49
-    let hrvStatus   = null
-
-    if (finalHrv == null) {
-      console.log('[garmin-sync] HRV not in sleep DTO, trying hrv endpoint...')
-      const hrvData = await garminFetch(gc, `/hrv-service/hrv/${today}`)
-      console.log('[garmin-sync] hrv endpoint raw:', JSON.stringify(hrvData)?.slice(0, 300))
-      if (hrvData) {
-        finalHrv  = hrvData.lastNightAvgHrv ?? hrvData.last_night_avg_hrv_ms
-          ?? hrvData.avgHrv ?? hrvData.weeklyAvg ?? null
-        hrvBaseLo = hrvData.baselineBalancedLow  ?? hrvData.baseline_balanced_low_ms  ?? 40
-        hrvBaseHi = hrvData.baselineBalancedUpper ?? hrvData.baseline_balanced_upper_ms ?? 49
-        hrvStatus = hrvData.status ?? null
-      }
-    } else {
-      hrvStatus = finalHrv >= hrvBaseLo && finalHrv <= hrvBaseHi ? 'Balanced'
-        : finalHrv > hrvBaseHi ? 'High' : 'Low'
-    }
-
-    // Body battery — via authenticated fetch to connectapi.garmin.com
-    const bodyBatData = await garminFetch(gc,
-      `/wellness-service/wellness/bodyBattery/bulletPoint?startDate=${today}&endDate=${today}`)
-    console.log('[garmin-sync] bodyBat raw:', JSON.stringify(bodyBatData)?.slice(0, 300))
-
+    // Body battery — CONFIRMED at sleepRaw.sleepBodyBattery[] top level
+    // Array of {value, startGMT} — take the max value (peak charge after sleep)
     let bodyBattery = null
-    if (Array.isArray(bodyBatData) && bodyBatData.length) {
-      // Take highest value of the day (most representative)
-      bodyBattery = Math.max(...bodyBatData.map(b => b.bodyBatteryLevel ?? b.level ?? 0))
+    const bbArr = sleepRaw?.sleepBodyBattery
+    if (Array.isArray(bbArr) && bbArr.length) {
+      bodyBattery = Math.max(...bbArr.map(b => b.value ?? 0))
     }
+
+    console.log('[garmin-sync] HRV source check — sleepRaw.avgOvernightHrv:', sleepRaw?.avgOvernightHrv, '| hrvStatus:', sleepRaw?.hrvStatus)
+    console.log('[garmin-sync] Battery source check — sleepBodyBattery length:', bbArr?.length, '| max:', bodyBattery)
 
     // RHR from heart rate response
     const rhr  = heartRaw?.restingHeartRate               ?? null
